@@ -1,5 +1,5 @@
 #summary How to write tests using Android Mock
-#labels Featured
+#labels Featured,User-Documentation
 
 =Writing Tests using Android Mock=
 
