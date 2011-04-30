@@ -1,4 +1,5 @@
 #summary Quick summary about the AndroidMockGenerator.jar file
+#labels User-Documentation
 
 AndroidMockGenerator.jar contains all of the files required to
 
