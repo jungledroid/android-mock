@@ -22,6 +22,7 @@ import javassist.NotFoundException;
 import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashSet;
@@ -56,7 +57,28 @@ public class AndroidFrameworkMockGenerator {
    */
   public List<GeneratedClassFile> getMocksForClass(Class<?> clazz) throws ClassNotFoundException,
       IOException {
-    List<Class<?>> prebuiltClasses = getPrebuiltClassesFor(clazz);
+    Collection<SdkVersion> allVersions = Arrays.asList(SdkVersion.getAllVersions());
+    return getMocksForClass(clazz, allVersions);
+  }
+
+  /**
+   * Returns a set of mock support classes for the specified Class for the specified version of
+   * the Android SDK. If the requested class is not part of the Android framework, then the class
+   * will not be found and an exception will be thrown.
+   * 
+   * @param clazz the class to mock.
+   * @param sdkVersion the version of api for which classes will be mocked.
+   * @return All available mock support classes (for all known Android SDKs) for
+   *         the requested Class.
+   */
+  public List<GeneratedClassFile> getMocksForClass(Class<?> clazz, SdkVersion sdkVersion)
+      throws ClassNotFoundException, IOException {
+    return getMocksForClass(clazz, Collections.singletonList(sdkVersion));
+  }
+
+  private List<GeneratedClassFile> getMocksForClass(Class<?> clazz,
+      Collection<SdkVersion> sdkVersions) throws ClassNotFoundException, IOException {
+    List<Class<?>> prebuiltClasses = getPrebuiltClassesFor(clazz, sdkVersions);
     List<GeneratedClassFile> classList = new ArrayList<GeneratedClassFile>();
     for (Class<?> prebuiltClass : prebuiltClasses) {
       try {
@@ -73,9 +95,9 @@ public class AndroidFrameworkMockGenerator {
     return classList;
   }
 
-  private List<Class<?>> getPrebuiltClassesFor(Class<?> clazz) throws ClassNotFoundException {
+  private List<Class<?>> getPrebuiltClassesFor(Class<?> clazz, Collection<SdkVersion> versions)
+      throws ClassNotFoundException {
     List<Class<?>> classes = new ArrayList<Class<?>>();
-    SdkVersion[] versions = SdkVersion.getAllVersions();
     for (SdkVersion sdkVersion : versions) {
       classes.add(Class.forName(FileUtils.getSubclassNameFor(clazz, sdkVersion)));
       classes.add(Class.forName(FileUtils.getInterfaceNameFor(clazz, sdkVersion)));
