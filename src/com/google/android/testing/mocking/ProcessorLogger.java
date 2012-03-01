@@ -35,8 +35,8 @@ import javax.tools.Diagnostic.Kind;
  * 
  */
 class ProcessorLogger {
-  private final OutputStream logFile;
   private final ProcessingEnvironment processingEnv;
+  private OutputStream logFile;
 
   ProcessorLogger(OutputStream logFile, ProcessingEnvironment processingEnv) {
     this.logFile = logFile;
@@ -48,6 +48,15 @@ class ProcessorLogger {
     this.processingEnv = processingEnv;
   }
 
+  ProcessorLogger(ProcessingEnvironment processingEnv) {
+    this.logFile = null;
+    this.processingEnv = processingEnv;
+  }
+  
+  void setLogFile(String logFileName) {
+    this.logFile = openLogFile(logFileName);
+  }
+  
   void reportClasspathError(String clazz, Throwable e) {
     printMessage(Kind.ERROR, "Could not find " + clazz);
     printMessage(Kind.ERROR, e);
