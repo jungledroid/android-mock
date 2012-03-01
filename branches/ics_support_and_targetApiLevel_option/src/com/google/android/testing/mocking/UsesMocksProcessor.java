@@ -21,6 +21,8 @@ import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.EnumSet;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -53,15 +55,22 @@ import javax.tools.JavaFileObject;
 @SupportedOptions({
     UsesMocksProcessor.REGENERATE_FRAMEWORK_MOCKS,
     UsesMocksProcessor.LOGFILE,
-    UsesMocksProcessor.BIN_DIR
+    UsesMocksProcessor.BIN_DIR,
+    UsesMocksProcessor.TARGET_APILEVEL
 })
 public class UsesMocksProcessor extends AbstractProcessor {
   public static final String LOGFILE = "logfile";
   public static final String REGENERATE_FRAMEWORK_MOCKS = "RegenerateFrameworkMocks";
   public static final String BIN_DIR = "bin_dir";
-  private AndroidMockGenerator mockGenerator = new AndroidMockGenerator();
+  public static final String TARGET_APILEVEL = "target_apilevel";
+  
+  private String binDir;
   private AndroidFrameworkMockGenerator frameworkMockGenerator =
-      new AndroidFrameworkMockGenerator();
+    new AndroidFrameworkMockGenerator();
+  private String logFileName;
+  private AndroidMockGenerator mockGenerator = new AndroidMockGenerator();
+  private boolean regenerateMocks;
+  Collection<SdkVersion> targetSdkVersions = EnumSet.noneOf(SdkVersion.class);
   ProcessorLogger logger;
 
   /**
@@ -72,6 +81,8 @@ public class UsesMocksProcessor extends AbstractProcessor {
   public boolean process(Set<? extends TypeElement> annotations, RoundEnvironment environment) {
     try {
       prepareLogger();
+      readProcessorOptions();
+      applyProcessorOptions();
       List<Class<?>> classesToMock = getClassesToMock(environment);
       Set<GeneratedClassFile> mockedClassesSet = getMocksFor(classesToMock);
       writeMocks(mockedClassesSet);
@@ -93,13 +104,11 @@ public class UsesMocksProcessor extends AbstractProcessor {
   private Set<GeneratedClassFile> getMocksFor(List<Class<?>> classesToMock) throws IOException,
       CannotCompileException {
     logger.printMessage(Kind.NOTE, "Found " + classesToMock.size() + " classes to mock");
-    boolean regenerateFrameworkMocks = processingEnv.getOptions().get(
-        REGENERATE_FRAMEWORK_MOCKS) != null;
-    if (regenerateFrameworkMocks) {
+    if (regenerateMocks) {
       logger.printMessage(Kind.NOTE, "Regenerating Framework Mocks on Request");
     }
     Set<GeneratedClassFile> mockedClassesSet =
-        getClassMocks(classesToMock, regenerateFrameworkMocks);
+        getClassMocks(classesToMock, regenerateMocks);
     logger.printMessage(Kind.NOTE, "Found " + mockedClassesSet.size()
         + " mocked classes to save");
     return mockedClassesSet;
@@ -120,7 +129,7 @@ public class UsesMocksProcessor extends AbstractProcessor {
 
   private void prepareLogger() {
     if (logger == null) {
-      logger = new ProcessorLogger(processingEnv.getOptions().get(LOGFILE), processingEnv);
+      logger = new ProcessorLogger(processingEnv);
     }
   }
 
@@ -180,8 +189,9 @@ public class UsesMocksProcessor extends AbstractProcessor {
   }
 
   /**
-   * Gets a set of GeneratedClassFiles to represent all of the support classes required to
-   * mock the List of classes provided in {@code classesToMock}.
+   * Gets a set of GeneratedClassFiles to represent all of the support classes required to mock the
+   * List of classes provided in {@code classesToMock}.
+   * 
    * @param classesToMock the list of classes to be mocked.
    * @param regenerateFrameworkMocks if true, then mocks for the framework classes will be created
    *        instead of pulled from the existing set of framework support classes.
@@ -192,11 +202,11 @@ public class UsesMocksProcessor extends AbstractProcessor {
     Set<GeneratedClassFile> mockedClassesSet = new HashSet<GeneratedClassFile>();
     for (Class<?> clazz : classesToMock) {
       try {
-        logger.printMessage(Kind.NOTE, "Mocking " + clazz);
-        if (!AndroidMock.isAndroidClass(clazz) || regenerateFrameworkMocks) {
-          mockedClassesSet.addAll(getAndroidMockGenerator().createMocksForClass(clazz));
+        boolean isAndroidClass = AndroidMock.isAndroidClass(clazz);
+        if (!isAndroidClass || regenerateFrameworkMocks) {
+          mockedClassesSet.addAll(createMocksForClass(clazz, isAndroidClass));
         } else {
-          mockedClassesSet.addAll(getAndroidFrameworkMockGenerator().getMocksForClass(clazz));
+          mockedClassesSet.addAll(getMocksForClass(clazz));
         }
       } catch (ClassNotFoundException e) {
         logger.reportClasspathError(clazz.getName(), e);
@@ -211,12 +221,89 @@ public class UsesMocksProcessor extends AbstractProcessor {
     return frameworkMockGenerator;
   }
 
+  private List<GeneratedClassFile> createMocksForClass(Class<?> clazz, boolean isAndroidClass)
+      throws ClassNotFoundException, IOException, CannotCompileException {
+    if (targetSdkVersions.contains(SdkVersion.UNKNOWN) || !isAndroidClass) {
+      logger.printMessage(Kind.NOTE,
+          String.format("Creating mocks of class: %s", clazz.getName()));
+      return getAndroidMockGenerator().createMocksForClass(clazz);
+    } else {
+      List<GeneratedClassFile> mockClassList = new ArrayList<GeneratedClassFile>();
+      for (SdkVersion targetSdkVersion : targetSdkVersions) {
+        logger.printMessage(
+            Kind.NOTE,
+            String.format("Creating mocks of class: %s for %s", clazz.getName(),
+                targetSdkVersion.name()));
+        mockClassList
+            .addAll(getAndroidMockGenerator().createMocksForClass(clazz, targetSdkVersion));
+      }
+      return mockClassList;
+    }
+  }
+
+  private List<GeneratedClassFile> getMocksForClass(Class<?> clazz) throws ClassNotFoundException,
+      IOException {
+    if (targetSdkVersions.contains(SdkVersion.UNKNOWN)) {
+      logger.printMessage(Kind.NOTE,
+          String.format("Fetching mocks of class: %s", clazz.getName()));
+      return getAndroidFrameworkMockGenerator().getMocksForClass(clazz);
+    } else {
+      List<GeneratedClassFile> mockClassList = new ArrayList<GeneratedClassFile>();
+      for (SdkVersion targetSdkVersion : targetSdkVersions) {
+        logger.printMessage(
+            Kind.NOTE,
+            String.format("Fetching mocks of class: %s for %s", clazz.getName(),
+                targetSdkVersion.name()));
+        mockClassList.addAll(getAndroidFrameworkMockGenerator().getMocksForClass(clazz,
+            targetSdkVersion));
+      }
+      return mockClassList;
+    }
+  }
+
   /**
-   * Writes the provided mocks from {@code mockedClassesSet} to the bin folder alongside the
-   * .class files being generated by the javac call which invoked this annotation processor.
-   * In Eclipse, additional information is needed as the Eclipse annotation processor framework
-   * is missing key functionality required by this method.  Instead the classes are saved using
-   * a FileOutputStream and the -Abin_dir processor option must be set.
+   * Reads the processor options passed in to the annotation processor and stores them in local
+   * variables.
+   * 
+   * @throws NumberFormatException if the target version is not numeric.
+   */
+  private void readProcessorOptions() throws NumberFormatException {
+    String targetApiLevel = processingEnv.getOptions().get(TARGET_APILEVEL);
+    if (targetApiLevel == null) {
+      targetSdkVersions.add(SdkVersion.UNKNOWN);
+    } else {
+      try {
+        for (String s : targetApiLevel.split(",")) {
+          targetSdkVersions.add(SdkVersion.getVersionFor(Integer.parseInt(s)));
+        }
+      } catch (NumberFormatException e) {
+        logger.printMessage(Kind.ERROR,
+            "target_apilevel must be numeric. for ex., -Atarget_apilevel=10");
+        throw e;
+      }
+    }
+
+    logFileName = processingEnv.getOptions().get(LOGFILE);
+    binDir = processingEnv.getOptions().get(BIN_DIR);
+    regenerateMocks = processingEnv.getOptions().get(REGENERATE_FRAMEWORK_MOCKS) != null;
+  }
+
+  /**
+   * Apply the processor options to entities that need it.
+   */
+  private void applyProcessorOptions() {
+    if (logger != null) {
+      logger.setLogFile(logFileName);
+    }
+  }
+
+  /**
+   * Writes the provided mocks from {@code mockedClassesSet} to the bin folder alongside the .class
+   * files being generated by the javac call which invoked this annotation processor. In Eclipse,
+   * additional information is needed as the Eclipse annotation processor framework is missing key
+   * functionality required by this method. Instead the classes are saved using a FileOutputStream
+   * and the -Abin_dir processor option must be set.
+   * 
    * @param mockedClassesSet the set of mocks to be saved.
    */
   void writeMocks(Set<GeneratedClassFile> mockedClassesSet) {
@@ -234,7 +321,7 @@ public class UsesMocksProcessor extends AbstractProcessor {
       } catch (UnsupportedOperationException e) {
         // Eclipse annotation processing doesn't support class creation.
         logger.printMessage(Kind.NOTE, "Saving via Eclipse " + clazz.getClassName());
-        saveMocksEclipse(clazz, processingEnv.getOptions().get(BIN_DIR).toString().trim());
+        saveMocksEclipse(clazz, binDir.trim().toString());
       }
     }
     logger.printMessage(Kind.NOTE, "Finished Processing Mocks");

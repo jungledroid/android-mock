@@ -210,6 +210,7 @@ public class UsesMocksProcessorTest extends TestCase {
     processor.init(processingEnv);
     ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
     processor.logger = new ProcessorLogger(outputStream, processingEnv);
+    processor.targetSdkVersions.add(SdkVersion.UNKNOWN);
     return processor;
   }
 
