@@ -23,11 +23,11 @@ After the `javac` step, you need to ensure that `AndroidMockRuntime.jar` is incl
 The instructions for setting this up in Eclipse are somewhat more complicated.  For detailed instructions, please see http://android-mock.googlecode.com/files/AndroidMockinEclipse.pdf
 
 ==Android Mock Annotation Processor options==
- * RegenerateFrameworkMocks=`<boolean>`
+ * !RegenerateFrameworkMocks=`<boolean>`
  If true, regenerates mocked classes for the Android Framework itself. Otherwise, android_framework_mocks.jar file is used to provide all the mocked classes for the framework.
 
  * bin_dir=`<absolute path to project's output folder>`
  Absolute path to the bin/output folder of the project where the generated class mocks will be saved.
 
  * target_apilevel=`<comma-separated android-api levels>`
- Use this to target individual android framework releases. For example, to test on ICS only, use target_apilevel=14, and to test on both Gingerbread and ICS, use target_apilevel=10,14. please see http://developer.android.com/guide/appendix/api-levels.html for a complete list of api levels.
+ Use this to target individual android framework releases. For example, to test on ICS only, use target_apilevel=14, and to test on both Gingerbread and ICS, use target_apilevel=10,14. Please see http://developer.android.com/guide/appendix/api-levels.html for a complete list of api levels.
